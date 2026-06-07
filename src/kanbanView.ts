@@ -106,6 +106,12 @@ export class KanbanView extends BasesView {
 	private swimlaneSortable: Sortable | null = null;
 	private swimlaneColumnSortables: Map<string | null, Sortable> = new Map();
 	private _debouncedRender: DebouncedFn<() => void>;
+	// Config writes (config.set) edit the base codeblock's text. Running them
+	// synchronously inside a render or an event handler races Obsidian's own
+	// reparse of that codeblock, which surfaces as a transient "Encountered an
+	// error while rendering code block" YAML notice. Debouncing pushes every
+	// write onto a later macrotask, off the render/edit stack.
+	private _debouncedPersist: DebouncedFn<() => void>;
 	private activeColorPicker: HTMLElement | null = null;
 
 	/**
@@ -205,6 +211,14 @@ export class KanbanView extends BasesView {
 				console.error('KanbanView error:', error);
 			}
 		}, DEBOUNCE_DELAY);
+
+		this._debouncedPersist = debounce(() => {
+			try {
+				this._persistPrefs();
+			} catch (error) {
+				console.error('KanbanView persist error:', error);
+			}
+		}, 150);
 	}
 
 	onDataUpdated(): void {
@@ -447,9 +461,11 @@ export class KanbanView extends BasesView {
 				});
 			}
 
-			// Merge any newly-seen column values into prefs and persist eagerly.
-			// This is the only place render() calls _persistPrefs(), and only when
-			// new columns appear — not on every render pass.
+			// Merge any newly-seen column values into prefs. Persisting happens on
+			// the debounced path: this runs inside render() (which Obsidian may
+			// invoke while reparsing the base codeblock), so a synchronous
+			// config.set() here would race that reparse and surface the transient
+			// "error while rendering code block" YAML notice.
 			const liveValues = Array.from(groupedEntries.keys());
 			const liveValueSet = new Set(liveValues);
 			let shouldPersistColumnOrder = false;
@@ -465,7 +481,7 @@ export class KanbanView extends BasesView {
 				shouldPersistColumnOrder = true;
 			}
 			if (shouldPersistColumnOrder) {
-				this._persistPrefs();
+				this._debouncedPersist();
 			}
 
 			const orderedValues = this.getOrderedColumnValues(liveValues);
@@ -1519,6 +1535,14 @@ export class KanbanView extends BasesView {
 
 	onClose(): void {
 		this._debouncedRender.cancel();
+		// Flush any pending debounced persist so unsaved order/colors aren't lost
+		// when the view closes.
+		this._debouncedPersist.cancel();
+		try {
+			this._persistPrefs();
+		} catch (error) {
+			console.error('KanbanView persist error on close:', error);
+		}
 		this.destroySortables();
 		this.activeColorPicker?.remove();
 		this.activeColorPicker = null;

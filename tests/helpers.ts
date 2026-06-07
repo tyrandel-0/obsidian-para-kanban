@@ -448,6 +448,9 @@ export function createKanbanViewWithApp(
 export function triggerDataUpdate(view: any): void {
 	mock.timers.enable({ apis: ['setTimeout'] });
 	view.onDataUpdated();
+	// First tick fires the render debounce; render() may schedule a longer persist
+	// debounce, so a second tick fires that nested timer before asserts read config.
 	mock.timers.tick(DEBOUNCE_DELAY);
+	mock.timers.tick(500);
 	mock.timers.reset();
 }
