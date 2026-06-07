@@ -219,10 +219,16 @@ export async function createQuickAddCard(
 		}
 	};
 
+	let createdFrontmatter: Record<string, unknown> = {};
+	const captureViewFrontmatter = (frontmatter: Record<string, unknown>): void => {
+		setFrontmatter(frontmatter);
+		createdFrontmatter = { ...frontmatter };
+	};
+
 	try {
-		// With a template we create the note bare and fill it afterwards; without
-		// one we let createFileForView write the column frontmatter directly.
-		await cb.createFileForView(fileNameToCreate, templateRaw === null ? setFrontmatter : undefined);
+		// Always let Bases prepare the note first. Its filters can add context
+		// properties such as Project/Areas, which we re-apply after templating.
+		await cb.createFileForView(fileNameToCreate, captureViewFrontmatter);
 		closeNativeNewItemPopover(ctx.doc);
 		const createdFile = targetFolder
 			? await ensureCreatedCardInFolder(ctx.app, createdFilePaths, createdFilePromise, baseFileName, targetFolder)
@@ -235,8 +241,12 @@ export async function createQuickAddCard(
 				now: new Date(),
 			});
 			await ctx.app.vault.modify(createdFile, content);
-			// Override the column/swimlane property on top of the template's own.
-			await ctx.app.fileManager.processFrontMatter(createdFile, setFrontmatter);
+			// Override template frontmatter with the view-derived context, then force
+			// the selected column/swimlane so every + button behaves the same way.
+			await ctx.app.fileManager.processFrontMatter(createdFile, (frontmatter: Record<string, unknown>) => {
+				Object.assign(frontmatter, createdFrontmatter);
+				setFrontmatter(frontmatter);
+			});
 		}
 	} catch (error) {
 		console.error('Error creating kanban card:', error);

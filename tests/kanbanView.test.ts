@@ -392,6 +392,68 @@ describe('Data Rendering - Column Rendering', () => {
 		]);
 	});
 
+	test('quick add preserves view filter frontmatter when applying a template', async () => {
+		const entries = createEntriesWithStatus();
+		const templateFile = createMockTFile('Templates/Task.md');
+		const createdFile = createMockTFile('Data/Tasks/Project Task.md');
+		let markdownFiles = [templateFile];
+		let modifiedContent = '';
+		let processedFrontmatter: Record<string, unknown> = {
+			Project: null,
+			Status: 'Idea',
+			CreatedAt: '{{DATE:YYYY-MM-DDTHH:mm:ss}}',
+		};
+
+		controller = createMockQueryController(entries, TEST_PROPERTIES);
+		controller.app = app;
+		controller.config.getAsPropertyId = () => PROPERTY_STATUS;
+		controller.config.set('quickAddFolder', 'Data/Tasks');
+		controller.config.set('templateFile', 'Templates/Task.md');
+
+		(app.vault as any).getMarkdownFiles = () => markdownFiles;
+		(app.vault as any).getFileByPath = (path: string) => (path === 'Templates/Task.md' ? templateFile : null);
+		(app.vault as any).read = async () => '---\nProject:\nAreas:\nStatus: Idea\n---\n';
+		(app.vault as any).modify = async (_file: unknown, content: string) => {
+			modifiedContent = content;
+		};
+		app.fileManager.processFrontMatter = (async (_file: unknown, processor: (fm: Record<string, unknown>) => void) => {
+			processor(processedFrontmatter);
+		}) as any;
+
+		const view = new KanbanView(controller, scrollEl);
+		setupKanbanViewWithApp(view, app);
+		triggerDataUpdate(view);
+		(view as any).createFileForView = async (
+			baseFileName: string,
+			frontmatterProcessor?: (frontmatter: Record<string, unknown>) => void,
+		) => {
+			const frontmatter: Record<string, unknown> = {
+				Project: '[[Pinned project]]',
+				Areas: ['[[Building]]'],
+			};
+			frontmatterProcessor?.(frontmatter);
+			(view as any).createFileForViewCalls.push({ baseFileName, frontmatter });
+			markdownFiles = [...markdownFiles, createdFile];
+		};
+
+		await (view as any).createQuickAddCard('Project Task', 'Doing', null);
+
+		assert.strictEqual(modifiedContent, '---\nProject:\nAreas:\nStatus: Idea\n---\n');
+		assert.deepStrictEqual((view as any).createFileForViewCalls, [
+			{
+				baseFileName: 'Data/Tasks/Project Task',
+				frontmatter: { Project: '[[Pinned project]]', Areas: ['[[Building]]'], status: 'Doing' },
+			},
+		]);
+		assert.deepStrictEqual(processedFrontmatter, {
+			Project: '[[Pinned project]]',
+			Areas: ['[[Building]]'],
+			Status: 'Idea',
+			CreatedAt: '{{DATE:YYYY-MM-DDTHH:mm:ss}}',
+			status: 'Doing',
+		});
+	});
+
 	test('quick add omits the column property for Uncategorized', async () => {
 		const entries = createEntriesWithEmptyValues();
 		controller = createMockQueryController(entries, TEST_PROPERTIES);
