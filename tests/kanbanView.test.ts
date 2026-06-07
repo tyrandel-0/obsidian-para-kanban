@@ -2374,7 +2374,7 @@ describe('Column Colors', () => {
 	});
 });
 
-describe('Legacy Data Migration', () => {
+describe('Legacy Data Fallback', () => {
 	let scrollEl: HTMLElement;
 	let controller: any;
 	let app: any;
@@ -2387,7 +2387,7 @@ describe('Legacy Data Migration', () => {
 		controller.config.getAsPropertyId = () => PROPERTY_STATUS;
 	});
 
-	test('migrates column order from legacy data on first render', () => {
+	test('applies column order from legacy data without writing config on first render', () => {
 		const legacyData = {
 			columnOrders: { [PROPERTY_STATUS]: ['Done', 'Doing', 'To Do'] },
 			columnColors: {},
@@ -2396,21 +2396,17 @@ describe('Legacy Data Migration', () => {
 		setupKanbanViewWithApp(view, app);
 		triggerDataUpdate(view);
 
-		// Order should be respected (migrated from legacy)
+		// Order should be respected from legacy data.
 		const columns = view.containerEl.querySelectorAll('.obk-column');
 		const renderedOrder = Array.from(columns).map((col) => col.getAttribute('data-column-value'));
 		assert.strictEqual(renderedOrder[0], 'Done', 'Legacy column order should be applied');
 
-		// And persisted into config
+		// Passive view load must not write into the base block config.
 		const saved = controller.config.get('columnOrders') as Record<string, string[]> | null;
-		assert.deepStrictEqual(
-			saved?.[PROPERTY_STATUS],
-			['Done', 'Doing', 'To Do'],
-			'Legacy order should be saved to config',
-		);
+		assert.strictEqual(saved, null, 'Legacy order should not be saved to config during render');
 	});
 
-	test('migrates column colors from legacy data on first render', () => {
+	test('applies column colors from legacy data without writing config on first render', () => {
 		const legacyData = {
 			columnOrders: {},
 			columnColors: { [PROPERTY_STATUS]: { 'To Do': 'red', Done: 'green' } },
@@ -2419,7 +2415,7 @@ describe('Legacy Data Migration', () => {
 		setupKanbanViewWithApp(view, app);
 		triggerDataUpdate(view);
 
-		// Colors should be applied (migrated from legacy)
+		// Colors should be applied from legacy data.
 		const columns = view.containerEl.querySelectorAll('.obk-column') as NodeListOf<HTMLElement>;
 		let toDoColumn: HTMLElement | null = null;
 		columns.forEach((col) => {
@@ -2432,9 +2428,9 @@ describe('Legacy Data Migration', () => {
 			'Legacy color should be applied',
 		);
 
-		// And persisted into config
+		// Passive view load must not write into the base block config.
 		const saved = controller.config.get('columnColors') as Record<string, Record<string, string>> | null;
-		assert.strictEqual(saved?.[PROPERTY_STATUS]?.['To Do'], 'red', 'Legacy colors should be saved to config');
+		assert.strictEqual(saved, null, 'Legacy colors should not be saved to config during render');
 	});
 
 	test('config data takes priority over legacy data', () => {

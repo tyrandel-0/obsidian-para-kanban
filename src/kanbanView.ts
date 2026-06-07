@@ -257,17 +257,16 @@ export class KanbanView extends BasesView {
 		this._prefsSwimlanePropertyId = swimlanePropertyId;
 		const swimlaneScopedKey = swimlanePropertyId ? this.swimlanePrefsKey(propertyId, swimlanePropertyId) : null;
 
-		// Column order — with legacy migration
+		// Column order — read legacy flat config as a fallback, but do not
+		// migrate it here. Loading a view is a passive render-path action, so
+		// config.set() here can corrupt the base block for the same reason as
+		// writing from render().
 		const rawOrders = this.config?.get('columnOrders');
 		const allOrders = isColumnOrders(rawOrders) ? rawOrders : {};
 		let columnOrder = allOrders[propertyId] ?? null;
 		const legacyOrder = this.legacyData?.columnOrders[propertyId] ?? null;
 		if (!columnOrder && legacyOrder) {
 			columnOrder = legacyOrder;
-			this.config?.set('columnOrders', {
-				...allOrders,
-				[propertyId]: legacyOrder,
-			});
 		}
 		this._prefs.columnOrder = columnOrder ? [...columnOrder] : [];
 
@@ -277,17 +276,14 @@ export class KanbanView extends BasesView {
 		const savedCardOrders = allCardOrders[swimlaneScopedKey ?? propertyId] ?? {};
 		this._prefs.cardOrders = Object.fromEntries(Object.entries(savedCardOrders).map(([k, v]) => [k, [...v]]));
 
-		// Column colors — with legacy migration
+		// Column colors — read legacy flat config as a fallback without writing
+		// during view load.
 		const rawColors = this.config?.get('columnColors');
 		const allColors = isColumnColors(rawColors) ? rawColors : {};
 		let columnColors = allColors[propertyId] ?? null;
 		const legacyColors = this.legacyData?.columnColors[propertyId];
 		if (!columnColors && legacyColors && Object.keys(legacyColors).length > 0) {
 			columnColors = legacyColors;
-			this.config?.set('columnColors', {
-				...allColors,
-				[propertyId]: legacyColors,
-			});
 		}
 		this._prefs.columnColors = columnColors ? { ...columnColors } : {};
 
