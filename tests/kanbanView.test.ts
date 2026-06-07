@@ -442,16 +442,83 @@ describe('Data Rendering - Column Rendering', () => {
 		assert.deepStrictEqual((view as any).createFileForViewCalls, [
 			{
 				baseFileName: 'Data/Tasks/Project Task',
-				frontmatter: { Project: '[[Pinned project]]', Areas: ['[[Building]]'], status: 'Doing' },
+				frontmatter: {
+					Project: '[[Pinned project]]',
+					Areas: ['[[Building]]'],
+					CreatedAt: processedFrontmatter.CreatedAt,
+					status: 'Doing',
+				},
 			},
 		]);
-		assert.deepStrictEqual(processedFrontmatter, {
-			Project: '[[Pinned project]]',
-			Areas: ['[[Building]]'],
+		assert.strictEqual(processedFrontmatter.Project, '[[Pinned project]]');
+		assert.deepStrictEqual(processedFrontmatter.Areas, ['[[Building]]']);
+		assert.strictEqual(processedFrontmatter.Status, 'Idea');
+		assert.strictEqual(processedFrontmatter.status, 'Doing');
+		assert.match(String(processedFrontmatter.CreatedAt), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
+	});
+
+	test('quick add inherits Areas from the active project when the view only sets Project', async () => {
+		const entries = createEntriesWithStatus();
+		const templateFile = createMockTFile('Templates/Task.md');
+		const activeProject = createMockTFile('Data/Projects/Pinned project.md');
+		const createdFile = createMockTFile('Data/Tasks/Inherited Task.md');
+		let markdownFiles = [templateFile, activeProject];
+		let processedFrontmatter: Record<string, unknown> = {
+			Project: null,
+			Areas: null,
 			Status: 'Idea',
-			CreatedAt: '{{DATE:YYYY-MM-DDTHH:mm:ss}}',
-			status: 'Doing',
-		});
+		};
+
+		controller = createMockQueryController(entries, TEST_PROPERTIES);
+		controller.app = app;
+		controller.config.getAsPropertyId = () => PROPERTY_STATUS;
+		controller.config.set('quickAddFolder', 'Data/Tasks');
+		controller.config.set('templateFile', 'Templates/Task.md');
+
+		(app.workspace as any).getActiveFile = () => activeProject;
+		(app.metadataCache as any).getFileCache = (file: unknown) =>
+			file === activeProject ? { frontmatter: { Areas: ['[[Building]]'] } } : null;
+		(app.vault as any).getMarkdownFiles = () => markdownFiles;
+		(app.vault as any).getFileByPath = (path: string) => (path === 'Templates/Task.md' ? templateFile : null);
+		(app.vault as any).read = async () =>
+			'---\nProject:\nAreas:\nStatus: Idea\nCreatedAt: {{DATE:YYYY-MM-DDTHH:mm:ss}}\n---\n';
+		(app.vault as any).modify = async (): Promise<void> => undefined;
+		app.fileManager.processFrontMatter = (async (_file: unknown, processor: (fm: Record<string, unknown>) => void) => {
+			processor(processedFrontmatter);
+		}) as any;
+
+		const view = new KanbanView(controller, scrollEl);
+		setupKanbanViewWithApp(view, app);
+		triggerDataUpdate(view);
+		(view as any).createFileForView = async (
+			baseFileName: string,
+			frontmatterProcessor?: (frontmatter: Record<string, unknown>) => void,
+		) => {
+			const frontmatter: Record<string, unknown> = {
+				Project: '[[Pinned project]]',
+			};
+			frontmatterProcessor?.(frontmatter);
+			(view as any).createFileForViewCalls.push({ baseFileName, frontmatter });
+			markdownFiles = [...markdownFiles, createdFile];
+		};
+
+		await (view as any).createQuickAddCard('Inherited Task', 'Doing', null);
+
+		assert.deepStrictEqual((view as any).createFileForViewCalls, [
+			{
+				baseFileName: 'Data/Tasks/Inherited Task',
+				frontmatter: {
+					Project: '[[Pinned project]]',
+					Areas: ['[[Building]]'],
+					status: 'Doing',
+					CreatedAt: processedFrontmatter.CreatedAt,
+				},
+			},
+		]);
+		assert.strictEqual(processedFrontmatter.Project, '[[Pinned project]]');
+		assert.deepStrictEqual(processedFrontmatter.Areas, ['[[Building]]']);
+		assert.strictEqual(processedFrontmatter.status, 'Doing');
+		assert.match(String(processedFrontmatter.CreatedAt), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
 	});
 
 	test('quick add omits the column property for Uncategorized', async () => {

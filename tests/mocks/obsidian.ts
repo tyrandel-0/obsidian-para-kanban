@@ -61,6 +61,10 @@ export interface App {
 		getAbstractFileByPath(path: string): TFile | null;
 		getResourcePath(file: { path: string }): string;
 	};
+	metadataCache: {
+		getFileCache(file: TFile): { frontmatter?: Record<string, unknown> } | null;
+		getFirstLinkpathDest(linkpath: string, sourcePath: string): { path: string } | null;
+	};
 	renderContext: RenderContext;
 }
 

@@ -1,6 +1,6 @@
 {
 	"name": "para-kanban",
-	"version": "0.1.5",
+	"version": "0.1.6",
 	"description": "A customizable kanban view for Obsidian Bases: create cards from templates, delete from the card, cap the board height, and hide columns.",
 	"main": "main.js",
 	"repository": {

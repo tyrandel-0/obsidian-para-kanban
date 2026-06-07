@@ -315,6 +315,7 @@ export function createMockApp(imageFiles: Record<string, { path: string }> = {})
 			renameFile,
 		} as any,
 		metadataCache: {
+			getFileCache: (): null => null,
 			getFirstLinkpathDest: (linkpath: string, _sourcePath: string) => imageFiles[linkpath] ?? null,
 		} as any,
 		vault: {

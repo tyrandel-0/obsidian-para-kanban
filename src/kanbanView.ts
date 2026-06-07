@@ -1279,12 +1279,21 @@ export class KanbanView extends BasesView {
 				if (evt.item.instanceOf(HTMLElement)) evt.item.classList.remove(CSS_CLASSES.CARD_HOVER);
 			},
 			onEnd: (evt: Sortable.SortableEvent) => {
-				this._dragging = false;
 				this.setActiveCard(null);
-				void this.handleCardDrop(evt);
+				void this.finishCardDrop(evt);
 			},
 		});
 		this._columnSortables.set(value, sortable);
+	}
+
+	private async finishCardDrop(evt: Sortable.SortableEvent): Promise<void> {
+		try {
+			await this.handleCardDrop(evt);
+		} finally {
+			window.requestAnimationFrame(() => {
+				this._dragging = false;
+			});
+		}
 	}
 
 	private async handleCardDrop(evt: Sortable.SortableEvent): Promise<void> {

@@ -111,6 +111,39 @@ function getCreatePath(baseFileName: string, folder: string | null): string {
 	return normalizePath(folder ? `${folder}/${baseFileName}` : baseFileName);
 }
 
+function isEmptyFrontmatterValue(value: unknown): boolean {
+	if (value === null || value === undefined) return true;
+	if (typeof value === 'string') return value.trim() === '';
+	if (Array.isArray(value)) return value.length === 0;
+	return false;
+}
+
+function getActiveFrontmatter(app: App): Record<string, unknown> | null {
+	const activeFile = app.workspace?.getActiveFile?.();
+	if (!activeFile) return null;
+	const cache = app.metadataCache?.getFileCache?.(activeFile);
+	const frontmatter = cache?.frontmatter;
+	return frontmatter && typeof frontmatter === 'object' ? frontmatter : null;
+}
+
+function formatCreatedAt(date: Date): string {
+	return substituteTokens('{{DATE:YYYY-MM-DDTHH:mm:ss}}', {
+		title: '',
+		column: '',
+		now: date,
+	});
+}
+
+function applyInheritedFrontmatter(
+	frontmatter: Record<string, unknown>,
+	activeFrontmatter: Record<string, unknown> | null,
+): void {
+	if (!activeFrontmatter) return;
+	if (isEmptyFrontmatterValue(frontmatter.Areas) && !isEmptyFrontmatterValue(activeFrontmatter.Areas)) {
+		frontmatter.Areas = activeFrontmatter.Areas;
+	}
+}
+
 async function ensureCreatedCardInFolder(
 	app: App,
 	previousPaths: Set<string>,
@@ -201,10 +234,18 @@ export async function createQuickAddCard(
 	const fileNameToCreate = getCreatePath(baseFileName, targetFolder);
 	const createdFilePaths = new Set(ctx.app.vault.getMarkdownFiles().map((file) => file.path));
 	const createdFilePromise = waitForCreatedMarkdownFile(ctx.app, createdFilePaths, fileNameToCreate);
+	const activeFrontmatter = getActiveFrontmatter(ctx.app);
+	const createdAt = formatCreatedAt(new Date());
 
 	// Force the dragged-into column (and swimlane) onto the note's frontmatter.
 	// This runs after any template body is written, so it always wins.
 	const setFrontmatter = (frontmatter: Record<string, unknown>): void => {
+		if (templateRaw !== null && isEmptyFrontmatterValue(frontmatter.CreatedAt)) {
+			frontmatter.CreatedAt = createdAt;
+		}
+
+		applyInheritedFrontmatter(frontmatter, activeFrontmatter);
+
 		if (columnValue === UNCATEGORIZED_LABEL) {
 			delete frontmatter[columnPropertyName];
 		} else {
