@@ -103,7 +103,7 @@ export const CSS_CLASSES = {
 	// Sortable placeholder (fallback / shared ghost style)
 	SORTABLE_GHOST: 'obk-sortable-ghost',
 
-	// Column remove button (shown only when column is empty)
+	// Legacy class name kept for tests/compat; remove buttons are not rendered.
 	COLUMN_REMOVE_BTN: 'obk-column-remove-btn',
 
 	// Column hide button (PARA Kanban) + the bar listing hidden columns

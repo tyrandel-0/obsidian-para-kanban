@@ -287,7 +287,7 @@ describe('Data Rendering - Column Rendering', () => {
 		assert.ok(addBtn?.querySelector('[data-icon="plus"]'), 'Quick add button should render the plus icon');
 	});
 
-	test('column quick add button does not exist when no folder is configured', () => {
+	test('column quick add button exists when no folder is configured', () => {
 		const entries = createEntriesWithStatus();
 		controller = createMockQueryController(entries, TEST_PROPERTIES);
 		controller.app = app;
@@ -299,7 +299,7 @@ describe('Data Rendering - Column Rendering', () => {
 
 		const doingColumn = view.containerEl.querySelector('[data-column-value="Doing"]');
 		const addBtn = doingColumn?.querySelector(`.${CSS_CLASSES.COLUMN_ADD_BTN}`);
-		assert.strictEqual(addBtn, null, 'Column should not have a quick add button without folder configured');
+		assert.ok(addBtn, 'Column should have a quick add button without folder configured');
 	});
 
 	test('quick add button appears after full rebuild when folder is configured', () => {
@@ -312,9 +312,10 @@ describe('Data Rendering - Column Rendering', () => {
 		setupKanbanViewWithApp(view, app);
 		triggerDataUpdate(view);
 
-		// No button yet
+		// Button exists even before a folder is configured; without a folder,
+		// creation delegates placement to Bases.
 		let doingColumn = view.containerEl.querySelector('[data-column-value="Doing"]');
-		assert.strictEqual(doingColumn?.querySelector(`.${CSS_CLASSES.COLUMN_ADD_BTN}`), null);
+		assert.ok(doingColumn?.querySelector(`.${CSS_CLASSES.COLUMN_ADD_BTN}`));
 
 		// Configure folder and re-render — folder change triggers a full rebuild
 		controller.config.set('quickAddFolder', 'cards');
@@ -327,7 +328,7 @@ describe('Data Rendering - Column Rendering', () => {
 		);
 	});
 
-	test('quick add button is removed after full rebuild when folder is cleared', () => {
+	test('quick add button remains after full rebuild when folder is cleared', () => {
 		const entries = createEntriesWithStatus();
 		controller = createMockQueryController(entries, TEST_PROPERTIES);
 		controller.app = app;
@@ -350,10 +351,9 @@ describe('Data Rendering - Column Rendering', () => {
 		triggerDataUpdate(view);
 
 		doingColumn = view.containerEl.querySelector('[data-column-value="Doing"]');
-		assert.strictEqual(
+		assert.ok(
 			doingColumn?.querySelector(`.${CSS_CLASSES.COLUMN_ADD_BTN}`),
-			null,
-			'Add button should be removed after folder is cleared',
+			'Add button should remain after folder is cleared',
 		);
 	});
 
@@ -372,6 +372,23 @@ describe('Data Rendering - Column Rendering', () => {
 
 		assert.deepStrictEqual((view as any).createFileForViewCalls, [
 			{ baseFileName: 'cards/New Task', frontmatter: { status: 'Doing' } },
+		]);
+	});
+
+	test('quick add creates through Bases when no folder is configured', async () => {
+		const entries = createEntriesWithStatus();
+		controller = createMockQueryController(entries, TEST_PROPERTIES);
+		controller.app = app;
+		controller.config.getAsPropertyId = () => PROPERTY_STATUS;
+
+		const view = new KanbanView(controller, scrollEl);
+		setupKanbanViewWithApp(view, app);
+		triggerDataUpdate(view);
+
+		await (view as any).createQuickAddCard('Embedded Task', 'Doing', null);
+
+		assert.deepStrictEqual((view as any).createFileForViewCalls, [
+			{ baseFileName: 'Embedded Task', frontmatter: { status: 'Doing' } },
 		]);
 	});
 
@@ -3317,7 +3334,7 @@ describe('Empty Column Persistence - Remove button visibility', () => {
 		});
 	});
 
-	test('Remove button shown on empty column from saved order', () => {
+	test('Remove button is not shown on empty column from saved order', () => {
 		const entries = createEntriesWithStatus();
 		controller = createMockQueryController(entries, TEST_PROPERTIES);
 		controller.app = app;
@@ -3332,10 +3349,10 @@ describe('Empty Column Persistence - Remove button visibility', () => {
 
 		const inProgressCol = view.containerEl.querySelector('[data-column-value="In Progress"]');
 		const removeBtn = inProgressCol?.querySelector('.obk-column-remove-btn');
-		assert.ok(removeBtn, 'Empty saved column should show a remove button');
+		assert.strictEqual(removeBtn, null, 'Empty saved column should not show a remove button');
 	});
 
-	test('Remove button has correct aria-label', () => {
+	test('Remove button is not rendered with an aria-label', () => {
 		const entries = createEntriesWithStatus();
 		controller = createMockQueryController(entries, TEST_PROPERTIES);
 		controller.app = app;
@@ -3351,14 +3368,10 @@ describe('Empty Column Persistence - Remove button visibility', () => {
 		const removeBtn = view.containerEl
 			.querySelector('[data-column-value="In Progress"]')
 			?.querySelector('.obk-column-remove-btn');
-		assert.strictEqual(
-			removeBtn?.getAttribute('aria-label'),
-			'Remove column: In Progress',
-			'Remove button should have a descriptive aria-label',
-		);
+		assert.strictEqual(removeBtn, null, 'Remove button should not be rendered');
 	});
 
-	test('Remove button appears when column becomes empty after data update', () => {
+	test('Remove button does not appear when column becomes empty after data update', () => {
 		const entries = createEntriesWithStatus();
 		controller = createMockQueryController(entries, TEST_PROPERTIES);
 		controller.app = app;
@@ -3380,10 +3393,14 @@ describe('Empty Column Persistence - Remove button visibility', () => {
 
 		const doingCol = view.containerEl.querySelector('[data-column-value="Doing"]');
 		assert.ok(doingCol, 'Doing column should still exist in the DOM');
-		assert.ok(doingCol?.querySelector('.obk-column-remove-btn'), 'Remove button should appear on newly-emptied column');
+		assert.strictEqual(
+			doingCol?.querySelector('.obk-column-remove-btn'),
+			null,
+			'Remove button should not appear on newly-emptied column',
+		);
 	});
 
-	test('Remove button disappears when an entry arrives in an empty column', () => {
+	test('Remove button stays absent when an entry arrives in an empty column', () => {
 		const entries = createEntriesWithStatus();
 		controller = createMockQueryController(entries, TEST_PROPERTIES);
 		controller.app = app;
@@ -3396,9 +3413,10 @@ describe('Empty Column Persistence - Remove button visibility', () => {
 		setupKanbanViewWithApp(view, app);
 		triggerDataUpdate(view);
 
-		assert.ok(
+		assert.strictEqual(
 			view.containerEl.querySelector('[data-column-value="In Progress"] .obk-column-remove-btn'),
-			'Remove button should be visible on empty column before data update',
+			null,
+			'Remove button should not be visible on empty column before data update',
 		);
 
 		// Add an In Progress entry
@@ -3409,113 +3427,7 @@ describe('Empty Column Persistence - Remove button visibility', () => {
 		triggerDataUpdate(view);
 
 		const removeBtn = view.containerEl.querySelector('[data-column-value="In Progress"] .obk-column-remove-btn');
-		assert.ok(!removeBtn, 'Remove button should disappear when the column receives an entry');
-	});
-});
-
-describe('Empty Column Persistence - Remove column action', () => {
-	let scrollEl: HTMLElement;
-	let controller: any;
-	let app: any;
-
-	beforeEach(() => {
-		scrollEl = createDivWithMethods();
-		app = createMockApp();
-	});
-
-	test('Clicking remove button removes the column from the DOM', () => {
-		const entries = createEntriesWithStatus();
-		controller = createMockQueryController(entries, TEST_PROPERTIES);
-		controller.app = app;
-		controller.config.getAsPropertyId = () => PROPERTY_STATUS;
-		controller.config.set('columnOrders', {
-			[PROPERTY_STATUS]: ['To Do', 'Doing', 'Done', 'In Progress'],
-		});
-
-		const view = new KanbanView(controller, scrollEl);
-		setupKanbanViewWithApp(view, app);
-		triggerDataUpdate(view);
-
-		const removeBtn = view.containerEl.querySelector(
-			'[data-column-value="In Progress"] .obk-column-remove-btn',
-		) as HTMLElement;
-		assert.ok(removeBtn, 'Precondition: remove button should exist');
-
-		removeBtn.click();
-
-		assert.ok(
-			!view.containerEl.querySelector('[data-column-value="In Progress"]'),
-			'Column should be removed from DOM after clicking remove button',
-		);
-	});
-
-	test('Clicking remove button removes the column from saved order', () => {
-		const entries = createEntriesWithStatus();
-		controller = createMockQueryController(entries, TEST_PROPERTIES);
-		controller.app = app;
-		controller.config.getAsPropertyId = () => PROPERTY_STATUS;
-		controller.config.set('columnOrders', {
-			[PROPERTY_STATUS]: ['To Do', 'Doing', 'Done', 'In Progress'],
-		});
-
-		const view = new KanbanView(controller, scrollEl);
-		setupKanbanViewWithApp(view, app);
-		triggerDataUpdate(view);
-
-		(view.containerEl.querySelector('[data-column-value="In Progress"] .obk-column-remove-btn') as HTMLElement).click();
-
-		const savedOrders = controller.config.get('columnOrders') as Record<string, string[]>;
-		const savedOrder = savedOrders?.[PROPERTY_STATUS] ?? [];
-		assert.ok(!savedOrder.includes('In Progress'), 'Removed column should not appear in saved order');
-	});
-
-	test('Clicking remove button does not affect other columns', () => {
-		const entries = createEntriesWithStatus();
-		controller = createMockQueryController(entries, TEST_PROPERTIES);
-		controller.app = app;
-		controller.config.getAsPropertyId = () => PROPERTY_STATUS;
-		controller.config.set('columnOrders', {
-			[PROPERTY_STATUS]: ['To Do', 'Doing', 'Done', 'In Progress'],
-		});
-
-		const view = new KanbanView(controller, scrollEl);
-		setupKanbanViewWithApp(view, app);
-		triggerDataUpdate(view);
-
-		(view.containerEl.querySelector('[data-column-value="In Progress"] .obk-column-remove-btn') as HTMLElement).click();
-
-		assert.ok(view.containerEl.querySelector('[data-column-value="To Do"]'), 'To Do column should remain');
-		assert.ok(view.containerEl.querySelector('[data-column-value="Doing"]'), 'Doing column should remain');
-		assert.ok(view.containerEl.querySelector('[data-column-value="Done"]'), 'Done column should remain');
-	});
-
-	test('Clicking remove button tears down the sortable instance for that column', () => {
-		const sortableMock = mockSortable();
-		(global as any).Sortable = sortableMock.Sortable;
-
-		const entries = createEntriesWithStatus();
-		controller = createMockQueryController(entries, TEST_PROPERTIES);
-		controller.app = app;
-		controller.config.getAsPropertyId = () => PROPERTY_STATUS;
-		controller.config.set('columnOrders', {
-			[PROPERTY_STATUS]: ['To Do', 'Doing', 'Done', 'In Progress'],
-		});
-
-		const view = new KanbanView(controller, scrollEl);
-		setupKanbanViewWithApp(view, app);
-		triggerDataUpdate(view);
-
-		assert.ok(
-			(view as any)._columnSortables.has('In Progress'),
-			'Precondition: empty column should have a sortable instance',
-		);
-
-		(view.containerEl.querySelector('[data-column-value="In Progress"] .obk-column-remove-btn') as HTMLElement).click();
-
-		assert.ok(
-			!(view as any)._columnSortables.has('In Progress'),
-			'Sortable instance should be removed after column is removed',
-		);
+		assert.strictEqual(removeBtn, null, 'Remove button should stay absent when the column receives an entry');
 	});
 });
 
@@ -3635,7 +3547,7 @@ describe('Column persistence when group-by property disappears from allPropertie
 		assert.ok(columnValues.includes('Done'), 'Done should persist as empty column');
 	});
 
-	test('Each empty persisted column has a remove button', () => {
+	test('Each empty persisted column omits the remove button', () => {
 		const entries = createEntriesWithStatus();
 		controller = createMockQueryController(entries, TEST_PROPERTIES);
 		controller.app = app;
@@ -3652,7 +3564,11 @@ describe('Column persistence when group-by property disappears from allPropertie
 		const columns = view.containerEl.querySelectorAll('.obk-column');
 		columns.forEach((col) => {
 			const removeBtn = col.querySelector('.obk-column-remove-btn');
-			assert.ok(removeBtn, `Column "${col.getAttribute('data-column-value')}" should have a remove button`);
+			assert.strictEqual(
+				removeBtn,
+				null,
+				`Column "${col.getAttribute('data-column-value')}" should not have a remove button`,
+			);
 		});
 	});
 });

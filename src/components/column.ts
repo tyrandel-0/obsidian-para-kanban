@@ -15,7 +15,6 @@ export interface ColumnRenderCtx {
 export interface ColumnCallbacks {
 	applyColumnColor: (columnEl: HTMLElement, colorName: string | null) => void;
 	onColorPickerClick: (anchorEl: HTMLElement, columnEl: HTMLElement, columnValue: string) => void;
-	onRemoveColumn: (columnValue: string, columnEl: HTMLElement) => void;
 	onHideColumn: (columnValue: string, columnEl: HTMLElement) => void;
 	createAddButton: (columnValue: string, swimlaneValue: string | null) => HTMLElement;
 	getQuickAddFolder: () => string | null;
@@ -57,19 +56,6 @@ export function applyColumnColor(columnEl: HTMLElement, colorName: string | null
 	columnEl.setAttribute(DATA_ATTRIBUTES.COLUMN_COLOR, colorName);
 }
 
-export function createRemoveButton(doc: Document, value: string, onRemove: () => void): HTMLElement {
-	const btn = doc.createElement('div');
-	btn.className = CSS_CLASSES.COLUMN_REMOVE_BTN;
-	btn.setAttribute('aria-label', `Remove column: ${value}`);
-	btn.setAttribute('role', 'button');
-	btn.textContent = '×';
-	btn.addEventListener('click', (e) => {
-		e.stopPropagation();
-		onRemove();
-	});
-	return btn;
-}
-
 export function createColumn(
 	value: string,
 	entries: BasesEntry[],
@@ -100,17 +86,11 @@ export function createColumn(
 	headerEl.createSpan({ text: value, cls: CSS_CLASSES.COLUMN_TITLE });
 	headerEl.createSpan({ text: `${entries.length}`, cls: CSS_CLASSES.COLUMN_COUNT });
 
-	if (cb.getQuickAddFolder()) {
-		headerEl.appendChild(cb.createAddButton(value, options.swimlaneValue ?? null));
-	}
+	headerEl.appendChild(cb.createAddButton(value, options.swimlaneValue ?? null));
 
 	// Hide button — flat mode only (swimlane child columns are not individually hideable).
 	if (options.showRemoveButton !== false) {
 		headerEl.appendChild(createHideButton(ctx.doc, value, () => cb.onHideColumn(value, columnEl)));
-	}
-
-	if (entries.length === 0 && options.showRemoveButton !== false) {
-		headerEl.appendChild(createRemoveButton(ctx.doc, value, () => cb.onRemoveColumn(value, columnEl)));
 	}
 
 	const bodyEl = columnEl.createDiv({ cls: CSS_CLASSES.COLUMN_BODY });
@@ -137,22 +117,11 @@ export function patchColumnCards(
 
 	const headerEl = columnEl.querySelector<HTMLElement>(`.${CSS_CLASSES.COLUMN_HEADER}`);
 	const columnValue = columnEl.getAttribute(DATA_ATTRIBUTES.COLUMN_VALUE);
-	const existingRemoveBtn = headerEl?.querySelector(`.${CSS_CLASSES.COLUMN_REMOVE_BTN}`) ?? null;
-	const isInSwimlane = !!columnEl.closest(`.${CSS_CLASSES.SWIMLANE}`);
-	if (headerEl && newEntries.length === 0 && !existingRemoveBtn && columnValue && !isInSwimlane) {
-		headerEl.appendChild(createRemoveButton(ctx.doc, columnValue, () => cb.onRemoveColumn(columnValue, columnEl)));
-	} else if (newEntries.length > 0 && existingRemoveBtn) {
-		existingRemoveBtn.remove();
-	}
-
 	const existingAddBtn = headerEl?.querySelector(`.${CSS_CLASSES.COLUMN_ADD_BTN}`) ?? null;
-	const hasFolder = !!cb.getQuickAddFolder();
-	if (headerEl && columnValue && hasFolder && !existingAddBtn) {
+	if (headerEl && columnValue && !existingAddBtn) {
 		const swimlaneEl = columnEl.closest<HTMLElement>(`[${DATA_ATTRIBUTES.SWIMLANE_VALUE}]`);
 		const swimlaneValue = swimlaneEl?.getAttribute(DATA_ATTRIBUTES.SWIMLANE_VALUE) ?? null;
 		headerEl.appendChild(cb.createAddButton(columnValue, swimlaneValue));
-	} else if (!hasFolder && existingAddBtn) {
-		existingAddBtn.remove();
 	}
 
 	const newPaths = new Set(newEntries.map((e) => e.file.path));

@@ -107,6 +107,10 @@ function getAvailablePath(app: App, folder: string, fileName: string): string {
 	return candidate;
 }
 
+function getCreatePath(baseFileName: string, folder: string | null): string {
+	return normalizePath(folder ? `${folder}/${baseFileName}` : baseFileName);
+}
+
 async function ensureCreatedCardInFolder(
 	app: App,
 	previousPaths: Set<string>,
@@ -173,11 +177,7 @@ export async function createQuickAddCard(
 	}
 
 	const targetFolder = ctx.quickAddFolder;
-	if (!targetFolder) {
-		new Notice('Quick add requires a folder to be configured.');
-		return;
-	}
-	if (!ctx.app?.vault.getFolderByPath(targetFolder)) {
+	if (targetFolder && !ctx.app?.vault.getFolderByPath(targetFolder)) {
 		new Notice(`Quick add folder not found: ${targetFolder}`);
 		return;
 	}
@@ -198,7 +198,7 @@ export async function createQuickAddCard(
 		}
 	}
 
-	const fileNameToCreate = normalizePath(`${targetFolder}/${baseFileName}`);
+	const fileNameToCreate = getCreatePath(baseFileName, targetFolder);
 	const createdFilePaths = new Set(ctx.app.vault.getMarkdownFiles().map((file) => file.path));
 	const createdFilePromise = waitForCreatedMarkdownFile(ctx.app, createdFilePaths, fileNameToCreate);
 
@@ -224,13 +224,9 @@ export async function createQuickAddCard(
 		// one we let createFileForView write the column frontmatter directly.
 		await cb.createFileForView(fileNameToCreate, templateRaw === null ? setFrontmatter : undefined);
 		closeNativeNewItemPopover(ctx.doc);
-		const createdFile = await ensureCreatedCardInFolder(
-			ctx.app,
-			createdFilePaths,
-			createdFilePromise,
-			baseFileName,
-			targetFolder,
-		);
+		const createdFile = targetFolder
+			? await ensureCreatedCardInFolder(ctx.app, createdFilePaths, createdFilePromise, baseFileName, targetFolder)
+			: (getCreatedMarkdownFile(ctx.app, createdFilePaths, baseFileName) ?? (await createdFilePromise));
 
 		if (createdFile && templateRaw !== null) {
 			const content = substituteTokens(templateRaw, {

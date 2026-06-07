@@ -1102,7 +1102,6 @@ export class KanbanView extends BasesView {
 		return {
 			applyColumnColor: (el, name) => this.applyColumnColor(el, name),
 			onColorPickerClick: (anchor, col, val) => this.openColorPicker(anchor, col, val),
-			onRemoveColumn: (val, el) => this.removeColumn(val, el),
 			onHideColumn: (val, el) => this.hideColumn(val, el),
 			createAddButton: (colVal, laneVal) => this.createAddButton(colVal, laneVal),
 			getQuickAddFolder: () => this.getQuickAddFolder(),
@@ -1253,13 +1252,6 @@ export class KanbanView extends BasesView {
 			this._columnSortables.delete(value);
 		}
 		colEl.remove();
-	}
-
-	private removeColumn(value: string, columnEl: HTMLElement): void {
-		if (!this._prefsPropertyId) return;
-		this._prefs.columnOrder = this._prefs.columnOrder.filter((v) => v !== value);
-		this._persistPrefs();
-		this.detachColumn(value, columnEl);
 	}
 
 	private attachCardSortable(body: HTMLElement, value: string): void {
@@ -1565,10 +1557,10 @@ export class KanbanView extends BasesView {
 				placeholder: 'Optional: horizontal grouping',
 			},
 			{
-				displayName: 'Add card to column folder',
+				displayName: 'Preferred card folder',
 				type: 'folder',
 				key: 'quickAddFolder',
-				placeholder: 'Required for + button',
+				placeholder: 'Optional: default from Base filters',
 			},
 			{
 				displayName: 'New card template',
