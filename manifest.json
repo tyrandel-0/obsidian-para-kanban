@@ -1,0 +1,10 @@
+{
+	"id": "para-kanban",
+	"name": "PARA Kanban",
+	"version": "0.1.0",
+	"minAppVersion": "1.10.2",
+	"description": "A customizable kanban view for Obsidian Bases: create cards from templates, delete from the card, cap board height, and hide columns.",
+	"author": "tyrandel",
+	"authorUrl": "https://github.com/tyrandel-0",
+	"isDesktopOnly": false
+}

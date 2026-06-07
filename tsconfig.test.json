@@ -1,0 +1,11 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"baseUrl": ".",
+		"paths": {
+			"obsidian": ["./tests/mocks/obsidian.ts"],
+			"sortablejs": ["./tests/mocks/sortablejs.js"]
+		}
+	},
+	"include": ["tests/**/*.ts", "src/**/*.ts", "main.ts"]
+}
