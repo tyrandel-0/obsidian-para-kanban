@@ -106,12 +106,6 @@ export class KanbanView extends BasesView {
 	private swimlaneSortable: Sortable | null = null;
 	private swimlaneColumnSortables: Map<string | null, Sortable> = new Map();
 	private _debouncedRender: DebouncedFn<() => void>;
-	// Config writes (config.set) edit the base codeblock's text. Running them
-	// synchronously inside a render or an event handler races Obsidian's own
-	// reparse of that codeblock, which surfaces as a transient "Encountered an
-	// error while rendering code block" YAML notice. Debouncing pushes every
-	// write onto a later macrotask, off the render/edit stack.
-	private _debouncedPersist: DebouncedFn<() => void>;
 	private activeColorPicker: HTMLElement | null = null;
 
 	/**
@@ -211,14 +205,6 @@ export class KanbanView extends BasesView {
 				console.error('KanbanView error:', error);
 			}
 		}, DEBOUNCE_DELAY);
-
-		this._debouncedPersist = debounce(() => {
-			try {
-				this._persistPrefs();
-			} catch (error) {
-				console.error('KanbanView persist error:', error);
-			}
-		}, 150);
 	}
 
 	onDataUpdated(): void {
@@ -325,8 +311,15 @@ export class KanbanView extends BasesView {
 	}
 
 	/**
-	 * Write _prefs back to config. Called only on user actions (drag-drop,
-	 * column remove, color change) — never during renders.
+	 * Write _prefs back to config. Called only on explicit user actions
+	 * (drag-drop, column remove/hide, color change) — NEVER from render().
+	 *
+	 * Why never from render(): config.set() rewrites the base codeblock's YAML,
+	 * and Obsidian reparses that same codeblock as the edit lands. A write driven
+	 * by a passive render (e.g. switching to a board) races that reparse and
+	 * surfaces the transient "Encountered an error while rendering code block"
+	 * YAML notice. Restricting writes to deliberate gestures keeps switching
+	 * (the common case) write-free.
 	 *
 	 * Change guards skip config.set() when the value hasn't changed, preventing
 	 * spurious onDataUpdated() triggers.
@@ -461,27 +454,23 @@ export class KanbanView extends BasesView {
 				});
 			}
 
-			// Merge any newly-seen column values into prefs. Persisting happens on
-			// the debounced path: this runs inside render() (which Obsidian may
-			// invoke while reparsing the base codeblock), so a synchronous
-			// config.set() here would race that reparse and surface the transient
-			// "error while rendering code block" YAML notice.
+			// Merge any newly-seen column values into the in-memory order only.
+			// render() must NOT call config.set(): it can run while Obsidian is
+			// reparsing this base codeblock, and a write here races that reparse,
+			// surfacing the transient "error while rendering code block" YAML
+			// notice on a passive action like switching boards. Auto-discovered
+			// order therefore lives in memory for the session; persistence happens
+			// only on deliberate gestures (drag, hide, color, remove).
 			const liveValues = Array.from(groupedEntries.keys());
 			const liveValueSet = new Set(liveValues);
-			let shouldPersistColumnOrder = false;
 			if (this._prefs.columnOrder.includes(UNCATEGORIZED_LABEL) && !liveValueSet.has(UNCATEGORIZED_LABEL)) {
 				this._prefs.columnOrder = this._prefs.columnOrder.filter((value) => value !== UNCATEGORIZED_LABEL);
-				shouldPersistColumnOrder = true;
 			}
 			const newValues = liveValues.filter((v) => !this._prefs.columnOrder.includes(v));
 			if (newValues.length > 0) {
 				const isInitialOrder = this._prefs.columnOrder.length === 0;
 				// No prior order — sort alphabetically as the initial ordering
 				this._prefs.columnOrder = isInitialOrder ? [...newValues].sort() : [...this._prefs.columnOrder, ...newValues];
-				shouldPersistColumnOrder = true;
-			}
-			if (shouldPersistColumnOrder) {
-				this._debouncedPersist();
 			}
 
 			const orderedValues = this.getOrderedColumnValues(liveValues);
@@ -675,7 +664,7 @@ export class KanbanView extends BasesView {
 				} else {
 					this._prefs.swimlaneOrder = [...this._prefs.swimlaneOrder, ...newLaneValues];
 				}
-				this._persistPrefs();
+				// In-memory only — render() must not write config (see _persistConfigKey).
 			}
 
 			const orderedLanes = this.getOrderedSwimlaneValues(liveLaneValues);
@@ -837,7 +826,7 @@ export class KanbanView extends BasesView {
 				} else {
 					this._prefs.swimlaneOrder = [...this._prefs.swimlaneOrder, ...newLaneValues];
 				}
-				this._persistPrefs();
+				// In-memory only — render() must not write config (see _persistConfigKey).
 			}
 
 			const orderedLanes = this.getOrderedSwimlaneValues(liveLaneValues);
@@ -1535,14 +1524,6 @@ export class KanbanView extends BasesView {
 
 	onClose(): void {
 		this._debouncedRender.cancel();
-		// Flush any pending debounced persist so unsaved order/colors aren't lost
-		// when the view closes.
-		this._debouncedPersist.cancel();
-		try {
-			this._persistPrefs();
-		} catch (error) {
-			console.error('KanbanView persist error on close:', error);
-		}
 		this.destroySortables();
 		this.activeColorPicker?.remove();
 		this.activeColorPicker = null;

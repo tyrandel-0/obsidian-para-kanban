@@ -3233,9 +3233,12 @@ describe('Empty Column Persistence - Saved columns restored', () => {
 		const savedOrders = controller.config.get('columnOrders') as Record<string, string[]>;
 
 		assert.ok(!columnValues.includes(UNCATEGORIZED_LABEL), 'Empty fallback column should not be rendered');
-		assert.ok(
-			!savedOrders[PROPERTY_STATUS].includes(UNCATEGORIZED_LABEL),
-			'Empty fallback column should be pruned from saved column order',
+		// Pruning is in-memory only — render() must not rewrite the base config
+		// (a write there races Obsidian's codeblock reparse).
+		assert.deepStrictEqual(
+			savedOrders[PROPERTY_STATUS],
+			['To Do', 'Doing', 'Done', UNCATEGORIZED_LABEL],
+			'render() must leave the saved column order untouched',
 		);
 	});
 });
@@ -3250,7 +3253,7 @@ describe('Empty Column Persistence - Eager order save', () => {
 		app = createMockApp();
 	});
 
-	test('First render persists column order without requiring drag-drop', () => {
+	test('First render shows all live columns without writing config', () => {
 		const entries = createEntriesWithStatus();
 		controller = createMockQueryController(entries, TEST_PROPERTIES);
 		controller.app = app;
@@ -3261,13 +3264,16 @@ describe('Empty Column Persistence - Eager order save', () => {
 		setupKanbanViewWithApp(view, app);
 		triggerDataUpdate(view);
 
+		const columnValues = Array.from(view.containerEl.querySelectorAll('.obk-column')).map((col) =>
+			col.getAttribute('data-column-value'),
+		);
+		assert.strictEqual(columnValues.length, 3, 'All three live columns should render from in-memory order');
+		// render() must not write config — that would race Obsidian's codeblock reparse.
 		const savedOrders = controller.config.get('columnOrders') as Record<string, string[]> | null;
-		const savedOrder = savedOrders?.[PROPERTY_STATUS];
-		assert.ok(savedOrder, 'Column order should be saved after first render');
-		assert.strictEqual(savedOrder.length, 3, 'All three live columns should be persisted');
+		assert.ok(!savedOrders?.[PROPERTY_STATUS], 'render() must not persist column order to config');
 	});
 
-	test('Column that loses all entries remains in persisted order', () => {
+	test('Column that loses all entries stays rendered via in-memory order', () => {
 		const entries = createEntriesWithStatus();
 		controller = createMockQueryController(entries, TEST_PROPERTIES);
 		controller.app = app;
@@ -3281,9 +3287,10 @@ describe('Empty Column Persistence - Eager order save', () => {
 		controller.data.data = entries.filter((e: any) => e.getValue(PROPERTY_STATUS)?.toString() !== 'Doing');
 		triggerDataUpdate(view);
 
-		const savedOrders = controller.config.get('columnOrders') as Record<string, string[]>;
-		const savedOrder = savedOrders?.[PROPERTY_STATUS] ?? [];
-		assert.ok(savedOrder.includes('Doing'), 'Emptied column should remain in persisted order');
+		const columnValues = Array.from(view.containerEl.querySelectorAll('.obk-column')).map((col) =>
+			col.getAttribute('data-column-value'),
+		);
+		assert.ok(columnValues.includes('Doing'), 'Emptied column should remain rendered via in-memory order');
 	});
 });
 
