@@ -24,6 +24,9 @@ height cap, and hideable columns.
   instead of stretching the whole note. Handy when a kanban is embedded inside a note.
 - **Hide columns** — hide a column from the board; hidden columns collect into a bar above
   the board and can be restored with one click. Their data is untouched.
+- **Filter by a linked note** — hide cards whose linked note carries a given value, e.g.
+  drop tasks belonging to a frozen project. Bases filters cannot follow a link into the
+  target's frontmatter, so this lives in the view (see below).
 
 ## Installation
 
@@ -71,6 +74,50 @@ views:
 | Card title property | `cardTitleProperty` | Use a property as the card title instead of the file name. |
 | Image property | `imageProperty` | Show a cover image from a property. |
 | Wrap property values | `wrapPropertyValues` | Wrap long property values on cards. |
+| Link property | `linkFilterProperty` | Link property on the card to follow, e.g. `Project`. |
+| Property on linked note | `linkFilterTargetProperty` | Property read on the linked note. Defaults to the group-by property. |
+| Hide when value is | `linkFilterValues` | Values that hide the card. |
+
+### Filter by a linked note
+
+Bases filters can compare links but cannot read the target note's frontmatter, so a rule
+like *"hide tasks whose project is frozen"* is not expressible in the base query. This
+option does it in the view instead:
+
+> a card has a link property → the link resolves to a note → that note has a property → if
+> its value is in the list, the card is not rendered.
+
+Nothing here is task- or project-specific; it is one property following another.
+
+```base
+views:
+  - type: para-kanban-view
+    groupByProperty: Status
+    linkFilterProperty: Project
+    linkFilterValues:
+      - Frozen
+      - Canceled
+```
+
+`linkFilterTargetProperty` is left out above on purpose. When it is empty the group-by
+property name is reused — in a schema where a task and its project both carry `Status`,
+that is what you mean, so only two fields need filling in.
+
+Details worth knowing:
+
+- **A card survives while any of its links is live.** A task on two projects is hidden only
+  when both are frozen.
+- **Missing data never hides a card.** No link property, an unresolved link, or a linked
+  note without the property all leave the card on the board.
+- **Values are matched case-insensitively**, trimmed, and list-valued properties match on
+  any element.
+- **A bar above the board reports the count** (*"3 cards hidden by linked note"*) with a
+  **Show** button that reveals them for the session. It is a peek, not a setting — it
+  resets on reload.
+- **The filter applies to this view only.** Other views of the same base — tables, cards —
+  are driven by the base query and will still list the hidden notes.
+- Linked notes sit outside the base query, so the view watches them directly: freezing a
+  project updates the board without a reload.
 
 Card display properties come from the view's property order (the *Properties* toolbar menu,
 or `order:` in the base).

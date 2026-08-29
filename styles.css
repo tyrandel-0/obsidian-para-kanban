@@ -753,3 +753,61 @@
 	height: 13px;
 	opacity: 0.7;
 }
+
+/* Linked-note filter bar — reports cards withheld by the filter and offers a
+   session-only peek at them. Shares the hidden-columns bar's visual language. */
+.obk-link-filter-bar {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+	padding: 6px 10px;
+	margin-bottom: 8px;
+	background: var(--background-secondary);
+	border-radius: 6px;
+	flex-shrink: 0;
+}
+
+.obk-link-filter-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.obk-link-filter-label .svg-icon {
+	width: 14px;
+	height: 14px;
+}
+
+.obk-link-filter-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 6px 2px 10px;
+	border-radius: 12px;
+	cursor: pointer;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-normal);
+	background: var(--background-modifier-border);
+	border: 1px solid transparent;
+	transition:
+		background 0.1s ease,
+		border-color 0.1s ease;
+}
+
+.obk-link-filter-chip:hover {
+	background: var(--background-modifier-border-hover);
+	border-color: var(--interactive-accent);
+}
+
+.obk-link-filter-chip--active {
+	border-color: var(--interactive-accent);
+}
+
+.obk-link-filter-chip .svg-icon {
+	width: 13px;
+	height: 13px;
+	opacity: 0.7;
+}

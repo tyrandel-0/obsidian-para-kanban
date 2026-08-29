@@ -47,6 +47,7 @@ import {
 import type { DebouncedFn } from './utils/debounce.ts';
 import { debounce } from './utils/debounce.ts';
 import { ensureGroupExists, normalizePropertyValue } from './utils/grouping.ts';
+import { applyLinkFilter, parseLinkFilterConfig, type LinkFilterConfig } from './utils/linkFilter.ts';
 
 export interface LegacyData {
 	columnOrders: Record<string, string[]>;
@@ -101,6 +102,15 @@ export class KanbanView extends BasesView {
 	private imagePropertyId: BasesPropertyId | null = null;
 	private templateFile: string | null = null;
 	private boardMaxHeight: number | null = null;
+	private linkFilterPropertyId: BasesPropertyId | null = null;
+	private linkFilterTargetProperty: unknown = null;
+	private linkFilterValues: unknown = null;
+	/** Linked notes the filter read a value from; watched for edits. */
+	private _linkFilterSources: Set<string> = new Set();
+	private _linkFilterHiddenCount = 0;
+	/** Session-only escape hatch: the bar's chip reveals filtered cards. */
+	private _linkFilterBypassed = false;
+	private _metadataListenerBound = false;
 	private _columnSortables: Map<string, Sortable> = new Map();
 	private _entryMap: Map<string, BasesEntry> = new Map();
 	private swimlaneSortable: Sortable | null = null;
@@ -222,6 +232,52 @@ export class KanbanView extends BasesView {
 
 		const rawHeight = Number(this.config?.get('boardMaxHeight'));
 		this.boardMaxHeight = Number.isFinite(rawHeight) && rawHeight > 0 ? rawHeight : null;
+
+		this.linkFilterPropertyId = this.config.getAsPropertyId('linkFilterProperty');
+		this.linkFilterTargetProperty = this.config?.get('linkFilterTargetProperty');
+		this.linkFilterValues = this.config?.get('linkFilterValues');
+	}
+
+	onload(): void {
+		super.onload();
+		this._bindMetadataListener();
+	}
+
+	/**
+	 * The notes the linked-note filter reads from are not part of this base's
+	 * query, so Bases never re-runs it when one of them changes — freezing a
+	 * project would leave its tasks on the board until a manual reload. Watch
+	 * those notes directly instead.
+	 *
+	 * Bound from onload() and, defensively, from the first render(), so the
+	 * listener exists regardless of when the framework loads the component.
+	 */
+	private _bindMetadataListener(): void {
+		if (this._metadataListenerBound) return;
+		const metadataCache = this.app?.metadataCache;
+		if (!metadataCache) return;
+		this._metadataListenerBound = true;
+		this.registerEvent(
+			metadataCache.on('changed', (file) => {
+				if (this._linkFilterSources.has(file.path)) this._debouncedRender();
+			}),
+		);
+	}
+
+	/**
+	 * Resolves the configured filter, defaulting the linked-note property to the
+	 * board's own group-by property. In a self-similar schema — a task and its
+	 * project both carrying `Status` — that default is what the user means, so
+	 * the option collapses to "which link" plus "which values".
+	 */
+	private _buildLinkFilterConfig(groupByPropertyId: BasesPropertyId): LinkFilterConfig | null {
+		if (!this.linkFilterPropertyId) return null;
+		return parseLinkFilterConfig(
+			parsePropertyId(this.linkFilterPropertyId).name,
+			this.linkFilterTargetProperty,
+			this.linkFilterValues,
+			parsePropertyId(groupByPropertyId).name,
+		);
 	}
 
 	private triggerHoverPreview(linktext: string, sourcePath: string, event: MouseEvent, targetEl: HTMLElement): void {
@@ -371,7 +427,9 @@ export class KanbanView extends BasesView {
 				this.containerEl.style.removeProperty('--obk-board-max-height');
 			}
 
-			const entries = this.data?.data || [];
+			this._bindMetadataListener();
+
+			const allEntries = this.data?.data || [];
 			const availablePropertyIds = this.allProperties || [];
 
 			if (!this.groupByPropertyId && availablePropertyIds.length === 0) {
@@ -403,6 +461,16 @@ export class KanbanView extends BasesView {
 				this._loadPrefs(this.groupByPropertyId, swimlanePropertyId);
 			}
 
+			// Drop cards whose linked note carries a filtered-out value. Runs before
+			// grouping so column counts, card order and quick-add all see the same
+			// list; nothing downstream needs to know the filter exists.
+			const linkFilterConfig = this._buildLinkFilterConfig(this.groupByPropertyId);
+			const linkFiltered = linkFilterConfig ? applyLinkFilter(allEntries, linkFilterConfig, this.app) : null;
+			this._linkFilterSources = linkFiltered?.sources ?? new Set();
+			this._linkFilterHiddenCount = linkFiltered?.hiddenCount ?? 0;
+			if (!linkFiltered) this._linkFilterBypassed = false;
+			const entries = linkFiltered && !this._linkFilterBypassed ? linkFiltered.entries : allEntries;
+
 			const hasNoEntries = entries.length === 0;
 			const hasNoSavedColumns = this._prefs.columnOrder.length === 0;
 			if (hasNoEntries && hasNoSavedColumns) {
@@ -411,6 +479,9 @@ export class KanbanView extends BasesView {
 					text: EMPTY_STATE_MESSAGES.NO_ENTRIES,
 					cls: CSS_CLASSES.EMPTY_STATE,
 				});
+				// The bar still renders: when the filter hides every card, its chip
+				// is the only way back.
+				this.renderLinkFilterBar();
 				return;
 			}
 			// hasNoEntries && !hasNoSavedColumns: board has saved columns — render them as empty so the user can see and manage them.
@@ -534,6 +605,7 @@ export class KanbanView extends BasesView {
 			}
 			this.reapplyActiveCard();
 			this.renderHiddenBar(orderedValues);
+			this.renderLinkFilterBar();
 		} catch (error) {
 			console.error('KanbanView error:', error);
 		}
@@ -578,6 +650,56 @@ export class KanbanView extends BasesView {
 				}
 			});
 		}
+	}
+
+	/**
+	 * Reports how many cards the linked-note filter is holding back, and lets the
+	 * user reveal them for the session. Cards vanishing with no trace is the one
+	 * real hazard of filtering inside the view rather than in the base query —
+	 * this bar is the antidote. The reveal is deliberately not persisted: it is
+	 * a peek, not a setting.
+	 */
+	private renderLinkFilterBar(): void {
+		const existing = this.containerEl.querySelector<HTMLElement>(`.${CSS_CLASSES.LINK_FILTER_BAR}`);
+
+		if (this._linkFilterHiddenCount === 0 && !this._linkFilterBypassed) {
+			existing?.remove();
+			return;
+		}
+
+		const bar = existing ?? this.containerEl.doc.createElement('div');
+		bar.className = CSS_CLASSES.LINK_FILTER_BAR;
+		bar.empty();
+		if (!existing) this.containerEl.prepend(bar);
+
+		const count = this._linkFilterHiddenCount;
+		const cards = count === 1 ? 'card' : 'cards';
+		const label = bar.createSpan({ cls: CSS_CLASSES.LINK_FILTER_LABEL });
+		setIcon(label.createSpan(), 'filter');
+		label.createSpan({
+			text: this._linkFilterBypassed ? ` Showing ${count} filtered ${cards}` : ` ${count} ${cards} hidden by linked note`,
+		});
+
+		const chip = bar.createDiv({ cls: CSS_CLASSES.LINK_FILTER_CHIP });
+		if (this._linkFilterBypassed) chip.classList.add(CSS_CLASSES.LINK_FILTER_CHIP_ACTIVE);
+		chip.setAttribute('role', 'button');
+		chip.setAttribute('tabindex', '0');
+		chip.setAttribute('aria-label', this._linkFilterBypassed ? 'Re-apply the filter' : 'Show filtered cards');
+		chip.createSpan({ text: this._linkFilterBypassed ? 'Hide again' : 'Show' });
+		setIcon(chip.createSpan(), this._linkFilterBypassed ? 'eye-off' : 'eye');
+		const toggle = () => this.toggleLinkFilterBypass();
+		chip.addEventListener('click', toggle);
+		chip.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter' || e.key === ' ') {
+				e.preventDefault();
+				toggle();
+			}
+		});
+	}
+
+	private toggleLinkFilterBypass(): void {
+		this._linkFilterBypassed = !this._linkFilterBypassed;
+		this.render();
 	}
 
 	private hideColumn(value: string, columnEl: HTMLElement): void {
@@ -1619,6 +1741,32 @@ export class KanbanView extends BasesView {
 				displayName: 'Wrap property values',
 				type: 'toggle',
 				key: 'wrapPropertyValues',
+			},
+			{
+				displayName: 'Linked note filter',
+				type: 'group',
+				items: [
+					{
+						displayName: 'Link property',
+						type: 'property',
+						key: 'linkFilterProperty',
+						filter: (prop: string) => !prop.startsWith('file.'),
+						placeholder: 'Optional: link to follow',
+					},
+					{
+						displayName: 'Property on linked note',
+						type: 'text',
+						key: 'linkFilterTargetProperty',
+						placeholder: 'Default: group-by property',
+						shouldHide: (config) => !config.getAsPropertyId('linkFilterProperty'),
+					},
+					{
+						displayName: 'Hide when value is',
+						type: 'multitext',
+						key: 'linkFilterValues',
+						shouldHide: (config) => !config.getAsPropertyId('linkFilterProperty'),
+					},
+				],
 			},
 		];
 	}

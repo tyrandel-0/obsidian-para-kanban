@@ -62,10 +62,19 @@ export interface App {
 		getResourcePath(file: { path: string }): string;
 	};
 	metadataCache: {
-		getFileCache(file: TFile): { frontmatter?: Record<string, unknown> } | null;
+		getFileCache(file: TFile): {
+			frontmatter?: Record<string, unknown>;
+			frontmatterLinks?: Array<{ key: string; link: string; original: string; displayText?: string }>;
+		} | null;
 		getFirstLinkpathDest(linkpath: string, sourcePath: string): { path: string } | null;
+		on(name: string, callback: (...args: any[]) => void): EventRef;
+		offref(ref: EventRef): void;
 	};
 	renderContext: RenderContext;
+}
+
+export interface EventRef {
+	detach?(): void;
 }
 
 // Real class: RenderContext implements HoverParent. Plugins don't construct it;
@@ -90,6 +99,7 @@ export abstract class BasesView {
 		set?(key: string, value: unknown): void;
 	};
 	createFileForViewCalls: Array<{ baseFileName: string; frontmatter: Record<string, unknown> }> = [];
+	registeredEvents: EventRef[] = [];
 
 	constructor(controller: QueryController) {
 		this.app = controller.app;
@@ -100,6 +110,16 @@ export abstract class BasesView {
 
 	abstract onDataUpdated(): void;
 	onClose?(): void;
+
+	// Component lifecycle surface used by views. The framework calls load();
+	// tests drive onload() directly when they need the bound listeners.
+	onload(): void {}
+
+	onunload(): void {}
+
+	registerEvent(eventRef: EventRef): void {
+		this.registeredEvents.push(eventRef);
+	}
 
 	async createFileForView(
 		baseFileName: string,

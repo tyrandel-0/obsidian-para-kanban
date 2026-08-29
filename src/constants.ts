@@ -115,6 +115,12 @@ export const CSS_CLASSES = {
 	// Card delete button (PARA Kanban)
 	CARD_DELETE_BTN: 'obk-card-delete-btn',
 
+	// Linked-note filter (PARA Kanban) — bar reporting cards hidden by it
+	LINK_FILTER_BAR: 'obk-link-filter-bar',
+	LINK_FILTER_LABEL: 'obk-link-filter-label',
+	LINK_FILTER_CHIP: 'obk-link-filter-chip',
+	LINK_FILTER_CHIP_ACTIVE: 'obk-link-filter-chip--active',
+
 	// Quick add modal
 	QUICK_ADD_FORM: 'obk-quick-add-form',
 	QUICK_ADD_INPUT: 'obk-quick-add-input',
